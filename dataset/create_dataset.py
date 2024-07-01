@@ -26,6 +26,7 @@ class RBPDataset(Dataset):
     def __getitem__(self, idx):
         # Convert data to tensor and add the channel dimension (for Conv1d)
         x = torch.tensor(self.data[idx], dtype=torch.float32).unsqueeze(0)  # Shape: (1, length)
+        x = x.repeat(3, 1)
         if self.labels:
             y = torch.tensor(self.labels[idx], dtype=torch.float32)
             return x, y

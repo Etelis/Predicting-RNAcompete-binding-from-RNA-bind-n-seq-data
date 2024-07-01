@@ -5,7 +5,7 @@ class CNNModel(nn.Module):
         super(CNNModel, self).__init__()
         
         self.conv_layers = nn.ModuleList()
-        self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
+        self.pool = nn.MaxPool1d(kernel_size=2, stride=1)  # Adjust stride to 1 to avoid too much reduction
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(dropout_rate)
         
@@ -17,7 +17,7 @@ class CNNModel(nn.Module):
             in_channels = conv_filters[i]
         
         # Calculate the size of the flattened feature map
-        fc_input_size = in_channels * (3 // (2 ** num_conv_layers))  # Assuming the input length is 3 and max pooling reduces it by half each time
+        fc_input_size = in_channels * 1  # Adjusted to match the final output size
         
         self.fc_layers = nn.ModuleList()
         for fc_size in fc_sizes:
@@ -27,20 +27,15 @@ class CNNModel(nn.Module):
         self.output_layer = nn.Linear(fc_sizes[-1], 1)
         
     def forward(self, x):
-        print(f"Input to CNNModel: {x.shape}")
         for conv in self.conv_layers:
             x = self.pool(self.relu(conv(x)))
             x = self.dropout(x)
-            print(f"Shape after conv layer: {x.shape}")
         
         x = x.view(x.size(0), -1)
-        print(f"Shape after flattening: {x.shape}")
         
         for fc in self.fc_layers:
             x = self.relu(fc(x))
             x = self.dropout(x)
-            print(f"Shape after FC layer: {x.shape}")
         
         x = self.output_layer(x)
-        print(f"Output shape: {x.shape}")
         return x

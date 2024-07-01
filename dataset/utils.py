@@ -30,7 +30,6 @@ def random_nucleotide_replacement(seq, random_choice):
     """
     return ''.join(random.choice(random_choice) if char == 'N' else char for char in seq)
 
-@measure_execution_time
 def count_kmers(file_path, file_limit=500000, KMER=6):
     """
     Reads a file and counts k-mers, replacing 'N' with a random nucleotide.
@@ -60,7 +59,6 @@ def count_kmers(file_path, file_limit=500000, KMER=6):
     
     return kmer_counts
 
-@measure_execution_time
 def calculate_kmer_ratios(reference_kmer_counts, target_kmer_counts):
     """
     Calculate the ratio of k-mer counts between reference and target dictionaries.
@@ -74,7 +72,6 @@ def calculate_kmer_ratios(reference_kmer_counts, target_kmer_counts):
     """
     return {kmer: reference_kmer_counts.get(kmer, 0) / target_kmer_counts.get(kmer, 1) for kmer in target_kmer_counts}
 
-@measure_execution_time
 def compute_average_kmer_ratios(sequence_file_path, low_kmer_ratios, mid_kmer_ratios, high_kmer_ratios, KMER=6):
     """
     Reads sequences from a file and calculates average k-mer ratios for each sequence.
@@ -111,7 +108,6 @@ def compute_average_kmer_ratios(sequence_file_path, low_kmer_ratios, mid_kmer_ra
     
     return list(avg_low_ratios), list(avg_mid_ratios), list(avg_high_ratios)
 
-@measure_execution_time
 def read_rbp_intensity_file(labels_file_path):
     """
     Reads the RBP intensity file and returns a list of true labels.
@@ -132,7 +128,6 @@ def read_rbp_intensity_file(labels_file_path):
     
     return true_labels
 
-@measure_execution_time
 def save_results(output_path, results):
     """
     Writes results to a file.
