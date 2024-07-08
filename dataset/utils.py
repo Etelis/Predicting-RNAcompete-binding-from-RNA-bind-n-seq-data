@@ -1,112 +1,118 @@
-import time
 import random
 import numpy as np
-from collections import defaultdict, Counter
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
-import os
+from concurrent.futures import ThreadPoolExecutor
 
-def measure_execution_time(func):
+def encode_kmer(kmer):
     """
-    Decorator to measure the execution time of functions.
-    """
-    def wrapper(*args, **kwargs):
-        start_time = time.time()
-        result = func(*args, **kwargs)
-        end_time = time.time()
-        print(f"Function '{func.__name__}' executed in {end_time - start_time:.2f} seconds")
-        return result
-    return wrapper
-
-def random_nucleotide_replacement(seq, random_choice):
-    """
-    Replace 'N' with a random nucleotide in the sequence.
+    Encodes a k-mer as an integer using base-4 encoding.
     
     Parameters:
-    seq (str): The DNA sequence.
-    random_choice (list): List of nucleotides to choose from.
-
+    kmer (str): The k-mer sequence.
+    
     Returns:
-    str: The sequence with 'N' replaced.
+    int: Encoded integer representation of the k-mer.
     """
-    return ''.join(random.choice(random_choice) if char == 'N' else char for char in seq)
+    encoding = {'A': 0, 'C': 1, 'G': 2, 'T': 3}
+    kmer_value = 0
+    for char in kmer:
+        kmer_value = kmer_value * 4 + encoding[char]
+    return kmer_value
 
-def count_kmers(file_path, file_limit=500000, KMER=6):
+def count_kmers_from_file(sequence_file_path, KMER=6, file_limit=None):
     """
-    Reads a file and counts k-mers, replacing 'N' with a random nucleotide.
+    Reads a sequence file and creates a numpy array with k-mer counts.
     
     Parameters:
-    file_path (str): Path to the input file.
+    sequence_file_path (str): Path to the sequence file.
+    KMER (int): Length of the k-mers to count.
     file_limit (int): Maximum number of lines to read.
 
     Returns:
-    Counter: Dictionary with k-mer counts.
+    np.ndarray: Numpy array with k-mer counts.
     """
-    print(f"Reading file: {file_path}")
-    kmer_counts = Counter()
+    max_kmers = 4 ** KMER
+    kmer_counts = np.zeros(max_kmers, dtype=int)
     random_choice = ['A', 'C', 'T', 'G']
     
-    with open(file_path, 'r') as file:
+    with open(sequence_file_path, 'r') as file:
         for count, line in enumerate(file):
             if file_limit and count >= file_limit:
                 break
             seq, freq = line.strip().split(',')
             freq = int(freq)
-            seq = random_nucleotide_replacement(seq, random_choice)
+            seq = ''.join(random.choice(random_choice) if char == 'N' else char for char in seq)
             
             for i in range(len(seq) - KMER + 1):
                 kmer = seq[i: i + KMER]
-                kmer_counts[kmer] += freq
+                encoded_kmer = encode_kmer(kmer)
+                kmer_counts[encoded_kmer] += freq
     
     return kmer_counts
 
+def generate_count_kmer_matrix(file_path, KMER=6):
+    """
+    Reads a sequence file and creates a binary matrix indicating k-mer presence.
+    
+    Parameters:
+    file_path (str): Path to the sequence file.
+    KMER (int): Length of the k-mers to count.
+
+    Returns:
+    np.ndarray: Binary matrix indicating k-mer presence for each line.
+    """
+    with open(file_path, 'r') as file:
+        num_lines = sum(1 for line in file)
+    
+    max_kmers = 4 ** KMER
+    binary_matrix = np.zeros((num_lines, max_kmers), dtype=int)
+    
+    with open(file_path, 'r') as file:
+        for line_idx, line in enumerate(file):
+            seq = line.strip().replace('U', 'T')
+            
+            for i in range(len(seq) - KMER + 1):
+                kmer = seq[i: i + KMER]
+                encoded_kmer = encode_kmer(kmer)
+                binary_matrix[line_idx, encoded_kmer] += 1
+    
+    return binary_matrix
+
 def calculate_kmer_ratios(reference_kmer_counts, target_kmer_counts):
     """
-    Calculate the ratio of k-mer counts between reference and target dictionaries.
+    Calculate the ratio of k-mer counts between reference and target arrays.
     
     Parameters:
-    reference_kmer_counts (Counter): Reference k-mer counts.
-    target_kmer_counts (Counter): Target k-mer counts.
+    reference_kmer_counts (np.ndarray): Reference k-mer counts.
+    target_kmer_counts (np.ndarray): Target k-mer counts.
 
     Returns:
-    dict: Dictionary with k-mer ratios.
+    np.ndarray: Array with k-mer ratios.
     """
-    return {kmer: reference_kmer_counts.get(kmer, 0) / target_kmer_counts.get(kmer, 1) for kmer in target_kmer_counts}
+    with np.errstate(divide='ignore', invalid='ignore'):
+        ratios = np.true_divide(reference_kmer_counts, target_kmer_counts)
+        ratios[~np.isfinite(ratios)] = 0  # -inf inf NaN will be replaced by 0
+    return ratios
 
-def compute_average_kmer_ratios(sequence_file_path, low_kmer_ratios, mid_kmer_ratios, high_kmer_ratios, KMER=6):
+def compute_average_kmer_ratios(binary_kmer_matrix, low_kmer_ratios, mid_kmer_ratios, high_kmer_ratios):
     """
-    Reads sequences from a file and calculates average k-mer ratios for each sequence.
+    Computes the average k-mer ratios for each sequence and returns a matrix.
     
     Parameters:
-    sequence_file_path (str): Path to the sequence file.
-    low_kmer_ratios (dict): Low concentration k-mer ratios.
-    mid_kmer_ratios (dict): Mid concentration k-mer ratios.
-    high_kmer_ratios (dict): High concentration k-mer ratios.
+    binary_kmer_matrix (np.ndarray): Binary matrix indicating k-mer presence for each line.
+    low_kmer_ratios (np.ndarray): Low concentration k-mer ratios.
+    mid_kmer_ratios (np.ndarray): Mid concentration k-mer ratios.
+    high_kmer_ratios (np.ndarray): High concentration k-mer ratios.
 
     Returns:
-    tuple: A tuple of three lists containing the average ratios for each sequence.
+    np.ndarray: A matrix with three columns containing the average ratios for each sequence.
     """
-    avg_low_ratios, avg_mid_ratios, avg_high_ratios = [], [], []
+    weighted_low = np.dot(binary_kmer_matrix, low_kmer_ratios)
+    weighted_mid = np.dot(binary_kmer_matrix, mid_kmer_ratios)
+    weighted_high = np.dot(binary_kmer_matrix, high_kmer_ratios)
     
-    def process_sequence(sequence):
-        sequence = sequence.strip().replace('U', 'T')
-        kmer_count = max(len(sequence) - KMER + 1, 1)  # Ensure count is at least 1 to avoid division by zero
-        sum_low = sum_mid = sum_high = 0
-
-        for i in range(len(sequence) - KMER + 1):
-            kmer = sequence[i: i + KMER]
-            sum_low += low_kmer_ratios.get(kmer, 0.0)
-            sum_mid += mid_kmer_ratios.get(kmer, 0.0)
-            sum_high += high_kmer_ratios.get(kmer, 0.0)
-
-        return (sum_low / kmer_count, sum_mid / kmer_count, sum_high / kmer_count)
+    result_matrix = np.vstack([weighted_low, weighted_mid, weighted_high]).T
     
-    with open(sequence_file_path, 'r') as file:
-        with ThreadPoolExecutor() as executor:
-            results = list(executor.map(process_sequence, file))
-    
-    avg_low_ratios, avg_mid_ratios, avg_high_ratios = zip(*results)
-    
-    return list(avg_low_ratios), list(avg_mid_ratios), list(avg_high_ratios)
+    return result_matrix
 
 def read_rbp_intensity_file(labels_file_path):
     """
