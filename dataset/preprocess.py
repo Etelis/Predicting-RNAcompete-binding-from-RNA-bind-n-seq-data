@@ -1,6 +1,5 @@
 import os
 import numpy as np
-from scipy.sparse import csr_matrix
 from .utils import count_kmers_from_file, calculate_kmer_ratios, compute_average_kmer_ratios, read_rbp_intensity_file, generate_count_kmer_matrix
 
 def compute_count_kmer_matrix(data_folder, rncmpt_file, KMER=6):
@@ -55,7 +54,7 @@ def preprocess_data(data_folder, selex_files, count_kmer_matrix=None, rncmpt_fil
     if count_kmer_matrix is None:
         if rncmpt_file is None:
             raise ValueError("Either binary_kmer_matrix or rncmpt_file must be provided.")
-        count_kmer_matrix = count_kmer_matrix(data_folder, rncmpt_file, KMER)
+        count_kmer_matrix = compute_count_kmer_matrix(data_folder, rncmpt_file, KMER)
 
     print("Computing average k-mer ratios...")
     result_matrix = compute_average_kmer_ratios(count_kmer_matrix, kmer_ratios[0], kmer_ratios[1], kmer_ratios[2])

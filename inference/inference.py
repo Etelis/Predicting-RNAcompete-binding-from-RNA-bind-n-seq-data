@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from model.model import CNNModel
 from train.utils import load_model
 from dataset.create_dataset import RBPDataset
+from utils import calculate_pearson_correlations, print_correlations
 
 def inference(args):
     # Set device
@@ -39,6 +40,11 @@ def inference(args):
             f.write(f"{pred}\n")
     print(f"Predictions written to {args.ofile}")
 
+    # Calculate and print correlations if the true labels directory is provided
+    if args.true_dir:
+        correlations = calculate_pearson_correlations(os.path.dirname(args.ofile), args.true_dir)
+        print_correlations(correlations)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Inference using a CNN model on RBP data')
     parser.add_argument('ofile', type=str, help='Output file to write predictions')
@@ -46,6 +52,7 @@ if __name__ == "__main__":
     parser.add_argument('selex_files', type=str, nargs='+', help='Paths to SELEX files')
     parser.add_argument('--model', type=str, help='Path to the pre-trained model file')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose logging')
+    parser.add_argument('--true_dir', type=str, help='Path to the directory containing true label files for correlation calculation')
 
     args = parser.parse_args()
     if args.verbose:
