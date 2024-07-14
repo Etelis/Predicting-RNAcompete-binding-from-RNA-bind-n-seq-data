@@ -5,7 +5,12 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from model.model import CNNModel
 from dataset.create_dataset import RBPDataset, split_dataset
-from .utils import save_model, load_model, hyperparameter_optimization
+from utils import save_model, load_model, hyperparameter_optimization
+from tqdm import tqdm
+
+# Check for CUDA
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
 
 def train_model(args):
     # Create dataset
@@ -24,7 +29,6 @@ def train_model(args):
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
-
     for inputs, _ in train_loader:
         print(f"Batch input shape: {inputs.shape}")
         break
@@ -40,37 +44,50 @@ def train_model(args):
     }
     
     if args.load_model:
-        model = load_model(args.load_model, model_params)
+        model, _ = load_model(args.load_model)
+        model.to(device)
     else:
-        model = CNNModel(**model_params)
+         model = CNNModel(**model_params).to(device)
     
     criterion = torch.nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
     
     if args.hyperparam_opt:
         best_params = hyperparameter_optimization(train_loader, val_loader if args.train_val_ratio > 0 else None)
-        model = CNNModel(**best_params)
+        model = CNNModel(**best_params).to(device)
         optimizer = optim.Adam(model.parameters(), lr=best_params["learning_rate"])
 
     # Training loop
     model.train()
     for epoch in range(args.epochs):
-        for i, (inputs, targets) in enumerate(train_loader):
-            # Debug: Print input shape at the start of each epoch
-            if i == 0:
-                print(f"Epoch [{epoch+1}/{args.epochs}], Batch input shape: {inputs.shape}")
-                
+        epoch_loss = 0.0
+        if args.verbose:
+            pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{args.epochs}")
+        else:
+            pbar = train_loader
+        
+        for i, (inputs, targets) in enumerate(pbar):
+            inputs, targets = inputs.to(device), targets.to(device)
+            
             optimizer.zero_grad()
             outputs = model(inputs)
+            
+            targets = targets.unsqueeze(1)
+            
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
             
             if args.verbose:
-                print(f'Epoch [{epoch+1}/{args.epochs}], Step [{i+1}/{len(train_loader)}], Loss: {loss.item():.4f}')
+                pbar.set_postfix({'Loss': f'{loss.item():.4f}'})
+            
+            epoch_loss += loss.item()
+
+        print(f"Epoch [{epoch+1}/{args.epochs}] completed with average loss: {epoch_loss/len(train_loader):.4f}")
     
     # Save the trained model
-    save_model(model, args.save_model)
+    save_model(model, model_params, args.save_model)
+    print(f"Model saved to {args.save_model}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train a CNN model on RBP data')
